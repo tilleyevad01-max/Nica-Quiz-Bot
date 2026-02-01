@@ -8,8 +8,8 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from docx import Document
 
 # --- SOZLAMALAR ---
-API_TOKEN = '8364345311:AAH0SXGdQOwHowswzMF5phJqNdl74Uoehqk'
-DATABASE_URL = 'postgresql://quiz_db_7ajx_user:LWTTTrdJKNfCxEUPCJaDvQF08rZtoDyh@dpg-d5vnskjuibrs73cup3u0-a/quiz_db_7ajx'
+API_TOKEN=oa.getenv('8364345311:AAH0SXGdQOwHowswzMF5phJqNdl74Uoehqk')
+DATABASE_URL=os.getenv('postgresql://quiz_db_7ajx_user:LWTTTrdJKNfCxEUPCJaDvQF08rZtoDyh@dpg-d5vnskjuibrs73cup3u0-a/quiz_db_7ajx')
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN, parse_mode=types.ParseMode.HTML)
@@ -199,6 +199,14 @@ def home(): return "Bot is running!"
 def run_flask(): app.run(host='0.0.0.0', port=10000)
 
 if __name__ == '__main__':
-    init_db()
-    Thread(target=run_flask).start()
-    executor.start_polling(dp, skip_updates=True)
+    try:
+        init_db()
+        # Flask'ni daemon rejimida ishga tushiramiz
+        flask_thread = Thread(target=run_flask)
+        flask_thread.daemon = True
+        flask_thread.start()
+        
+        logging.info("Bot ishga tushmoqda...")
+        executor.start_polling(dp, skip_updates=True)
+    except Exception as e:
+        logging.error(f"Kutilmagan xato: {e}")
