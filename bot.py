@@ -23,7 +23,7 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, lang TEXT DEFAULT "uz")')
+    c.execute("CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, lang TEXT DEFAULT 'uz')")
     c.execute('''CREATE TABLE IF NOT EXISTS quizzes 
                  (id SERIAL PRIMARY KEY, name TEXT, questions TEXT, 
                   timer INTEGER, creator_id BIGINT)''')
