@@ -10,7 +10,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from docx import Document
 
 # --- SOZLAMALAR ---
-API_TOKEN = 'SIZNING_BOT_TOKENINGIZ'
+API_TOKEN = os.getenv("8364345311:AAH0SXGdQOwHowswzMF5phJqNdl74Uoehqk")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN, parse_mode=types.ParseMode.HTML)
