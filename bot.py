@@ -8,7 +8,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from docx import Document
 
 # --- SOZLAMALAR ---
-API_TOKEN=oa.getenv('8364345311:AAH0SXGdQOwHowswzMF5phJqNdl74Uoehqk')
+API_TOKEN=os.getenv('8364345311:AAH0SXGdQOwHowswzMF5phJqNdl74Uoehqk')
 DATABASE_URL=os.getenv('postgresql://quiz_db_7ajx_user:LWTTTrdJKNfCxEUPCJaDvQF08rZtoDyh@dpg-d5vnskjuibrs73cup3u0-a/quiz_db_7ajx')
 
 logging.basicConfig(level=logging.INFO)
