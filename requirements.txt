@@ -1,3 +1,5 @@
 aiogram==2.25.1
 python-docx
 aiohttp==3.8.6
+flask
+psycopg2-binary
