@@ -8,8 +8,9 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from docx import Document
 
 # --- SOZLAMALAR ---
-API_TOKEN=os.getenv('8364345311:AAH0SXGdQOwHowswzMF5phJqNdl74Uoehqk')
-DATABASE_URL=os.getenv('postgresql://quiz_db_7ajx_user:LWTTTrdJKNfCxEUPCJaDvQF08rZtoDyh@dpg-d5vnskjuibrs73cup3u0-a/quiz_db_7ajx')
+# Qavs ichida token emas, Render'dagi o'zgaruvchi nomi bo'lishi shart!
+API_TOKEN = os.getenv('API_TOKEN')
+DATABASE_URL = os.getenv('DATABASE_URL')
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN, parse_mode=types.ParseMode.HTML)
