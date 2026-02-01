@@ -12,161 +12,96 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from docx import Document
 
-# --- SOZLAMALAR (Render Environment Variables'dan olinadi) ---
+# --- SOZLAMALAR ---
 API_TOKEN = os.getenv('API_TOKEN')
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 logging.basicConfig(level=logging.INFO)
 
-# Botni tekshirish
 if not API_TOKEN:
-    raise ValueError("XATO: API_TOKEN topilmadi! Render sozlamalariga kiring.")
+    raise ValueError("API_TOKEN Render'da sozlanmagan!")
 
 bot = Bot(token=API_TOKEN, parse_mode=types.ParseMode.HTML)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-# --- DATABASE FUNKSIYALARI ---
+# --- DATABASE ---
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
 def init_db():
     conn = get_db_connection()
     c = conn.cursor()
-    # PostgreSQL uchun 'uz' yaktirnoqda bo'lishi shart
     c.execute("CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, lang TEXT DEFAULT 'uz')")
     c.execute('''CREATE TABLE IF NOT EXISTS quizzes 
                  (id SERIAL PRIMARY KEY, name TEXT, questions TEXT, 
                   timer INTEGER, creator_id BIGINT)''')
+    # Natijalarni saqlash uchun jadval
+    c.execute('''CREATE TABLE IF NOT EXISTS results 
+                 (poll_id TEXT PRIMARY KEY, chat_id BIGINT, user_id BIGINT, 
+                  user_name TEXT, is_correct BOOLEAN)''')
     conn.commit()
     c.close()
     conn.close()
 
-# --- MATNLAR ---
-TEXTS = {
-    'uz': {
-        'start': "Xush kelibsiz! /new - yangi quiz, /myquiz - boshqarish, /language - til.",
-        'enter_name': "Quiz uchun nom kiriting:",
-        'send_docx': "Endi .docx faylni yuboring:",
-        'timer_select': "Har bir savol uchun vaqtni tanlang (soniya):",
-        'done': "Quiz yaratildi! ID: <code>{id}</code>\nIshlatish: <code>/run {id}</code>",
-        'no_quiz': "Sizda hali quizlar yo'q.",
-        'edit_n': "Nomni tahrirlash", 'edit_t': "Taymerni tahrirlash"
-    },
-    'ru': {
-        'start': "Добро пожаловать! /new - новый квиз, /myquiz - управление.",
-        'enter_name': "Введите название квиза:",
-        'send_docx': "Отправьте .docx файл:",
-        'timer_select': "Выберите время на вопрос:",
-        'done': "Квиз создан! ID: <code>{id}</code>",
-        'no_quiz': "У вас пока нет квизов.",
-        'edit_n': "Изменить имя", 'edit_t': "Изменить таймер"
-    },
-    'en': {
-        'start': "Welcome! /new - new quiz, /myquiz - manage.",
-        'enter_name': "Enter quiz name:",
-        'send_docx': "Send .docx file:",
-        'timer_select': "Select timer per question:",
-        'done': "Quiz created! ID: <code>{id}</code>",
-        'no_quiz': "No quizzes found.",
-        'edit_n': "Edit Name", 'edit_t': "Edit Timer"
-    }
-}
-
+# --- STATES ---
 class QuizStates(StatesGroup):
     waiting_name = State()
     waiting_file = State()
     waiting_timer = State()
 
-def g_txt(uid, key):
-    try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("SELECT lang FROM users WHERE id = %s", (uid,))
-        res = c.fetchone()
-        lang = res[0] if res else 'uz'
-        c.close()
-        conn.close()
-        return TEXTS.get(lang, TEXTS['uz']).get(key, key)
-    except:
-        return TEXTS['uz'].get(key, key)
+# --- TEST JARAYONI UCHUN GLOBAL LUG'AT ---
+# Qaysi chatda qaysi test ketayotganini kuzatish uchun
+active_quizzes = {}
 
-# --- BUYRUQLAR ---
+# --- HANDLERS ---
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(m: types.Message):
-    await m.answer(g_txt(m.from_user.id, 'start'))
-
-@dp.message_handler(commands=['language'])
-async def cmd_lang(m: types.Message):
-    kb = types.InlineKeyboardMarkup().add(
-        types.InlineKeyboardButton("Uzbek 🇺🇿", callback_data="setl_uz"),
-        types.InlineKeyboardButton("Русский 🇷🇺", callback_data="setl_ru"),
-        types.InlineKeyboardButton("English 🇺🇸", callback_data="setl_en")
-    )
-    await m.answer("Select language / Tilni tanlang:", reply_markup=kb)
-
-@dp.callback_query_handler(lambda c: c.data.startswith('setl_'))
-async def set_lang(cb: types.CallbackQuery):
-    lang = cb.data.split('_')[1]
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("INSERT INTO users (id, lang) VALUES (%s, %s) ON CONFLICT (id) DO UPDATE SET lang = %s", (cb.from_user.id, lang, lang))
-    conn.commit()
-    c.close()
-    conn.close()
-    await cb.message.edit_text("Success / Muvaffaqiyatli!")
+    await m.answer("Xush kelibsiz! \n/new - Yangi test yaratish\n/run ID - Testni boshlash")
 
 @dp.message_handler(commands=['new'])
 async def cmd_new(m: types.Message):
-    await m.answer(g_txt(m.from_user.id, 'enter_name'))
+    await m.answer("Quiz uchun nom kiriting:")
     await QuizStates.waiting_name.set()
 
 @dp.message_handler(state=QuizStates.waiting_name)
 async def p_name(m: types.Message, state: FSMContext):
     await state.update_data(name=m.text)
-    await m.answer(g_txt(m.from_user.id, 'send_docx'))
+    await m.answer("Endi .docx faylni yuboring:")
     await QuizStates.waiting_file.set()
 
 @dp.message_handler(content_types=['document'], state=QuizStates.waiting_file)
 async def p_file(m: types.Message, state: FSMContext):
     if not m.document.file_name.endswith('.docx'):
-        return await m.answer("Faqat .docx fayl yuboring!")
+        return await m.answer("Faqat .docx fayl!")
     
     path = f"tmp_{m.from_user.id}.docx"
     await m.document.download(destination_file=path)
     
-    try:
-        doc = Document(path)
-        qs = []
-        curr = None
-        for p in doc.paragraphs:
-            t = p.text.strip()
-            if not t: continue
-            if t.startswith('#'):
-                if curr: qs.append(curr)
-                curr = {"q": t[1:].strip(), "options": []}
-            elif t.startswith('+'):
-                option = t[1:].strip()
-                curr['options'].append(option)
-                curr['correct'] = option
-            else:
-                if curr: curr['options'].append(t)
-        if curr: qs.append(curr)
-        os.remove(path)
-        
-        await state.update_data(qs=json.dumps(qs))
-        kb = types.ReplyKeyboardMarkup(resize_keyboard=True).add("10", "15", "20", "30", "60")
-        await m.answer(g_txt(m.from_user.id, 'timer_select'), reply_markup=kb)
-        await QuizStates.waiting_timer.set()
-    except Exception as e:
-        await m.answer(f"Faylni o'qishda xato: {e}")
+    doc = Document(path)
+    qs = []
+    curr = None
+    for p in doc.paragraphs:
+        t = p.text.strip()
+        if not t: continue
+        if t.startswith('#'):
+            if curr: qs.append(curr)
+            curr = {"q": t[1:].strip(), "options": []}
+        elif t.startswith('+'):
+            curr['options'].append(t[1:].strip())
+            curr['correct'] = t[1:].strip()
+        else:
+            if curr: curr['options'].append(t)
+    if curr: qs.append(curr)
+    os.remove(path)
+    
+    await state.update_data(qs=json.dumps(qs))
+    await m.answer("Vaqtni tanlang (soniya):", reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add("15", "30", "60"))
+    await QuizStates.waiting_timer.set()
 
 @dp.message_handler(state=QuizStates.waiting_timer)
 async def p_timer(m: types.Message, state: FSMContext):
-    if not m.text.isdigit():
-        return await m.answer("Faqat raqam kiriting!")
-        
     data = await state.get_data()
     conn = get_db_connection()
     c = conn.cursor()
@@ -176,53 +111,101 @@ async def p_timer(m: types.Message, state: FSMContext):
     conn.commit()
     c.close()
     conn.close()
-    await m.answer(g_txt(m.from_user.id, 'done').format(id=qid), reply_markup=types.ReplyKeyboardRemove())
+    await m.answer(f"Tayyor! ID: <code>{qid}</code>", reply_markup=types.ReplyKeyboardRemove())
     await state.finish()
+
+# --- JAVOBLARNI TUTIB OLISH ---
+@dp.poll_answer_handler()
+async def handle_poll_answer(quiz_answer: types.PollAnswer):
+    # active_quizzes lug'atidan ushbu poll tegishli ekanini tekshiramiz
+    p_id = quiz_answer.poll_id
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # Javob to'g'riligini tekshirish uchun bazadan yoki lug'atdan foydalanamiz
+    # Bu yerda soddalashtirish uchun bazaga yozib ketamiz
+    is_correct = False
+    for quiz_id, data in active_quizzes.items():
+        if p_id in data['polls']:
+            if quiz_answer.option_ids[0] == data['polls'][p_id]:
+                is_correct = True
+            
+            c.execute("INSERT INTO results (poll_id, chat_id, user_id, user_name, is_correct) VALUES (%s, %s, %s, %s, %s)",
+                      (p_id, quiz_answer.user.id, quiz_answer.user.id, quiz_answer.user.full_name, is_correct))
+            break
+    
+    conn.commit()
+    c.close()
+    conn.close()
 
 @dp.message_handler(commands=['run'])
 async def run_q(m: types.Message):
-    args = m.get_args()
-    if not args or not args.isdigit():
-        return await m.answer("Ishlatish: /run ID (Masalan: /run 1)")
+    qid = m.get_args()
+    if not qid: return
     
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT questions, timer FROM quizzes WHERE id = %s", (args,))
+    c.execute("SELECT questions, timer, name FROM quizzes WHERE id = %s", (qid,))
     res = c.fetchone()
-    c.close()
-    conn.close()
     
     if res:
-        qs = json.loads(res[0])
-        t_sec = res[1]
-        await m.answer(f"Test boshlanmoqda... Jami savollar: {len(qs)}")
+        questions = json.loads(res[0])
+        timer = res[1]
+        quiz_name = res[2]
         
-        for q in qs:
+        # Chat uchun testni aktivlashtirish
+        active_quizzes[m.chat.id] = {'polls': {}, 'total': len(questions)}
+        
+        await m.answer(f"🏁 <b>{quiz_name}</b> testi boshlanmoqda!\nSavollar soni: {len(questions)}")
+        
+        for q in questions:
             opts = list(q['options'])
             random.shuffle(opts)
-            correct_id = opts.index(q['correct'])
+            correct_idx = opts.index(q['correct'])
             
-            await bot.send_poll(
-                m.chat.id, q['q'], opts, 
-                type='quiz', correct_option_id=correct_id, 
-                open_period=t_sec, is_anonymous=False
+            sent_poll = await bot.send_poll(
+                m.chat.id, q['q'], opts, type='quiz', 
+                correct_option_id=correct_idx, open_period=timer, is_anonymous=False
             )
-            # SAVOLLAR ORASIDAGI KUTISH
-            await asyncio.sleep(t_sec + 3) 
-    else:
-        await m.answer("Quiz topilmadi.")
+            
+            # Poll ID va to'g'ri javobni saqlaymiz
+            active_quizzes[m.chat.id]['polls'][sent_poll.poll.id] = correct_idx
+            await asyncio.sleep(timer + 3)
+        
+        # --- NATIJALARNI HISOBLASH ---
+        await m.answer("✅ Test yakunlandi! Natijalar hisoblanmoqda...")
+        await asyncio.sleep(2)
+        
+        c.execute("""SELECT user_name, COUNT(*) FILTER (WHERE is_correct = True) as correct
+                     FROM results WHERE poll_id IN %s GROUP BY user_id, user_name 
+                     ORDER BY correct DESC""", (tuple(active_quizzes[m.chat.id]['polls'].keys()),))
+        
+        results = c.fetchall()
+        
+        text = f"📊 <b>{quiz_name}</b> Natijalari:\n\n"
+        for i, row in enumerate(results, 1):
+            medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+            rank = medals.get(i, f"{i}-o'rin:")
+            wrong = len(questions) - row[1]
+            text += f"{rank} {row[0]} — {row[1]} to'g'ri, {wrong} xato\n"
+        
+        if not results:
+            text += "Hech kim qatnashmadi. 🤷‍♂️"
+            
+        await m.answer(text)
+        # Tozalash
+        del active_quizzes[m.chat.id]
+        
+    c.close()
+    conn.close()
 
-# --- FLASK KEEP-ALIVE ---
+# --- FLASK ---
 app = Flask('')
 @app.route('/')
-def home(): return "Bot is running!"
+def home(): return "OK"
 def run_flask(): app.run(host='0.0.0.0', port=10000)
 
 if __name__ == '__main__':
     init_db()
-    # Flaskni daemon qilib ishga tushiramiz
-    t = Thread(target=run_flask)
-    t.daemon = True
-    t.start()
-    print("Bot ishga tushdi...")
+    Thread(target=run_flask, daemon=True).start()
     executor.start_polling(dp, skip_updates=True)
